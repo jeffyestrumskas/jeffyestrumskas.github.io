@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="description" content="">
+    <meta name="color-scheme" content="light dark">
+    <title>spotPlight - spotlight dataleak automation | Jeff Yestrumskas</title>
+    <link rel="stylesheet" href="https://jeffyestrumskas.com/style.css?h=deb34d1a66af0ae0fc7b">
+    
+    
+    <!-- Theme initialization script - runs before render to prevent flash -->
+    <script>
+        (function() {
+            'use strict';
+            var STORAGE_KEY = 'theme-preference';
+
+            function getStoredTheme() {
+                try {
+                    return localStorage.getItem(STORAGE_KEY);
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            function getSystemTheme() {
+                if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    return 'dark';
+                }
+                return 'light';
+            }
+
+            // Apply theme immediately to prevent flash
+            var storedTheme = getStoredTheme();
+            if (storedTheme) {
+                document.documentElement.setAttribute('data-theme', storedTheme);
+            }
+            // If no stored theme, CSS handles it via prefers-color-scheme
+        })();
+    </script>
+</head>
+<body>
+    <div class="grid-highlight" aria-hidden="true"></div>
+
+    <!-- Noscript: hide toggle if JS disabled (theme still works via CSS prefers-color-scheme) -->
+    <noscript>
+        <style>.theme-toggle { display: none !important; }</style>
+    </noscript>
+
+    <!-- Theme toggle button -->
+    <button
+        type="button"
+        class="theme-toggle"
+        id="theme-toggle"
+        aria-label="Toggle dark mode"
+        title="Toggle dark mode"
+        aria-live="polite"
+    >
+        <!-- Sun icon (shown in dark mode) -->
+        <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        <!-- Moon icon (shown in light mode) -->
+        <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+    </button>
+
+    <script>
+        (function() {
+            'use strict';
+
+            var STORAGE_KEY = 'theme-preference';
+            var toggle = document.getElementById('theme-toggle');
+            var highlight = document.querySelector('.grid-highlight');
+            var gridSize = 50;
+
+            // Theme management
+            function getStoredTheme() {
+                try {
+                    return localStorage.getItem(STORAGE_KEY);
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            function setStoredTheme(theme) {
+                try {
+                    localStorage.setItem(STORAGE_KEY, theme);
+                } catch (e) {
+                    // localStorage not available
+                }
+            }
+
+            function removeStoredTheme() {
+                try {
+                    localStorage.removeItem(STORAGE_KEY);
+                } catch (e) {
+                    // localStorage not available
+                }
+            }
+
+            function getSystemTheme() {
+                if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    return 'dark';
+                }
+                return 'light';
+            }
+
+            function getCurrentTheme() {
+                var storedTheme = getStoredTheme();
+                if (storedTheme) {
+                    return storedTheme;
+                }
+                return getSystemTheme();
+            }
+
+            function applyTheme(theme) {
+                document.documentElement.setAttribute('data-theme', theme);
+                updateAriaLabel(theme);
+            }
+
+            function updateAriaLabel(theme) {
+                if (toggle) {
+                    var label = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+                    toggle.setAttribute('aria-label', label);
+                    toggle.setAttribute('title', label);
+                }
+            }
+
+            function toggleTheme() {
+                var currentTheme = getCurrentTheme();
+                var newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+
+                setStoredTheme(newTheme);
+                applyTheme(newTheme);
+            }
+
+            // Initialize
+            var currentTheme = getCurrentTheme();
+            var storedTheme = getStoredTheme();
+
+            // Only set data-theme if user has made a choice or if we need to override for correct display
+            if (storedTheme) {
+                applyTheme(storedTheme);
+            } else {
+                // No stored preference - update aria label based on system theme
+                updateAriaLabel(getSystemTheme());
+            }
+
+            // Toggle click handler
+            if (toggle) {
+                toggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    toggleTheme();
+                });
+
+                // Keyboard support (Enter and Space already work for buttons)
+            }
+
+            // Listen for system theme changes
+            if (window.matchMedia) {
+                var mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+                // Handle system theme change
+                var handleSystemThemeChange = function(e) {
+                    // Only react if user hasn't set a preference
+                    if (!getStoredTheme()) {
+                        updateAriaLabel(e.matches ? 'dark' : 'light');
+                    }
+                };
+
+                // Modern browsers
+                if (mediaQuery.addEventListener) {
+                    mediaQuery.addEventListener('change', handleSystemThemeChange);
+                }
+                // Safari < 14
+                else if (mediaQuery.addListener) {
+                    mediaQuery.addListener(handleSystemThemeChange);
+                }
+            }
+
+            // Grid highlight mouse tracking (only on non-touch devices)
+            if (highlight && window.matchMedia && !window.matchMedia('(pointer: coarse)').matches) {
+                document.addEventListener('mousemove', function(e) {
+                    var x = Math.floor(e.clientX / gridSize) * gridSize;
+                    var y = Math.floor(e.clientY / gridSize) * gridSize;
+                    highlight.style.left = x + 'px';
+                    highlight.style.top = y + 'px';
+                });
+            }
+        })();
+    </script>
+
+    <div class="wrapper">
+        
+        <header class="site-header">
+            <div class="site-brand">
+                <a href="https:&#x2F;&#x2F;jeffyestrumskas.com" class="site-title">Jeff Yestrumskas</a>
+                
+            </div>
+            
+        </header>
+        
+
+        <main>
+            
+<nav class="breadcrumb">
+    <a href="https:&#x2F;&#x2F;jeffyestrumskas.com">Home</a>
+    
+    
+    
+    
+    
+    
+    
+    <span class="sep">/</span>
+    <a href="https:&#x2F;&#x2F;jeffyestrumskas.com&#x2F;projects&#x2F;">Projects</a>
+    
+    
+    
+    <span class="sep">/</span>
+    <span class="current">spotPlight - spotlight dataleak automation</span>
+</nav>
+
+<article class="post">
+    <header class="post-header">
+        <h1 class="post-title">spotPlight - spotlight dataleak automation</h1>
+        
+        
+        <p class="post-desc">Earlier versions of macOS leaked small amounts of spotlight index data to USB drives on locked systems and this automates the exfiltration process by emulating up to 128 USB mass storage devices</p>
+        
+        
+        
+    </header>
+    <div class="post-body">
+        <p>I noticed that certain versions of macOS would leak small amounts of spotlight indexed data to any USB drive that was inserted into the system, even when locked.  The project named spotPlight was the result of automating the extraction of this data.  I found that rapidly inserting and removing up to 128 emulated USB drives at a time into macOS system using a raspberry pi, that it was possible to exfiltrate data from a screenlocked macOS system even with filevault enabled.</p>
+<span id="continue-reading"></span>
+<p><strong>External Links:</strong></p>
+<ul>
+<li>Blog post: <a rel="external" href="https://fyrmassociates.com/blog/2018/12/01/macos-spotlight-data-leak/">spotPlight - macOS data leak</a></li>
+<li>Code: <a rel="external" href="https://github.com/fyrm/spotplight/">spotPlight github repo</a></li>
+</ul>
+
+    </div>
+</article>
+
+        </main>
+
+        <footer class="site-footer">
+            <span class="footer-text">&copy; 2026</span>
+        </footer>
+    </div>
+</body>
+</html>

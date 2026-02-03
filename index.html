@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="description" content="">
+    <meta name="color-scheme" content="light dark">
+    <title>Jeff Yestrumskas</title>
+    <link rel="stylesheet" href="https://jeffyestrumskas.com/style.css?h=deb34d1a66af0ae0fc7b">
+    
+    
+    <!-- Theme initialization script - runs before render to prevent flash -->
+    <script>
+        (function() {
+            'use strict';
+            var STORAGE_KEY = 'theme-preference';
+
+            function getStoredTheme() {
+                try {
+                    return localStorage.getItem(STORAGE_KEY);
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            function getSystemTheme() {
+                if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    return 'dark';
+                }
+                return 'light';
+            }
+
+            // Apply theme immediately to prevent flash
+            var storedTheme = getStoredTheme();
+            if (storedTheme) {
+                document.documentElement.setAttribute('data-theme', storedTheme);
+            }
+            // If no stored theme, CSS handles it via prefers-color-scheme
+        })();
+    </script>
+</head>
+<body>
+    <div class="grid-highlight" aria-hidden="true"></div>
+
+    <!-- Noscript: hide toggle if JS disabled (theme still works via CSS prefers-color-scheme) -->
+    <noscript>
+        <style>.theme-toggle { display: none !important; }</style>
+    </noscript>
+
+    <!-- Theme toggle button -->
+    <button
+        type="button"
+        class="theme-toggle"
+        id="theme-toggle"
+        aria-label="Toggle dark mode"
+        title="Toggle dark mode"
+        aria-live="polite"
+    >
+        <!-- Sun icon (shown in dark mode) -->
+        <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        <!-- Moon icon (shown in light mode) -->
+        <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+    </button>
+
+    <script>
+        (function() {
+            'use strict';
+
+            var STORAGE_KEY = 'theme-preference';
+            var toggle = document.getElementById('theme-toggle');
+            var highlight = document.querySelector('.grid-highlight');
+            var gridSize = 50;
+
+            // Theme management
+            function getStoredTheme() {
+                try {
+                    return localStorage.getItem(STORAGE_KEY);
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            function setStoredTheme(theme) {
+                try {
+                    localStorage.setItem(STORAGE_KEY, theme);
+                } catch (e) {
+                    // localStorage not available
+                }
+            }
+
+            function removeStoredTheme() {
+                try {
+                    localStorage.removeItem(STORAGE_KEY);
+                } catch (e) {
+                    // localStorage not available
+                }
+            }
+
+            function getSystemTheme() {
+                if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    return 'dark';
+                }
+                return 'light';
+            }
+
+            function getCurrentTheme() {
+                var storedTheme = getStoredTheme();
+                if (storedTheme) {
+                    return storedTheme;
+                }
+                return getSystemTheme();
+            }
+
+            function applyTheme(theme) {
+                document.documentElement.setAttribute('data-theme', theme);
+                updateAriaLabel(theme);
+            }
+
+            function updateAriaLabel(theme) {
+                if (toggle) {
+                    var label = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+                    toggle.setAttribute('aria-label', label);
+                    toggle.setAttribute('title', label);
+                }
+            }
+
+            function toggleTheme() {
+                var currentTheme = getCurrentTheme();
+                var newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+
+                setStoredTheme(newTheme);
+                applyTheme(newTheme);
+            }
+
+            // Initialize
+            var currentTheme = getCurrentTheme();
+            var storedTheme = getStoredTheme();
+
+            // Only set data-theme if user has made a choice or if we need to override for correct display
+            if (storedTheme) {
+                applyTheme(storedTheme);
+            } else {
+                // No stored preference - update aria label based on system theme
+                updateAriaLabel(getSystemTheme());
+            }
+
+            // Toggle click handler
+            if (toggle) {
+                toggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    toggleTheme();
+                });
+
+                // Keyboard support (Enter and Space already work for buttons)
+            }
+
+            // Listen for system theme changes
+            if (window.matchMedia) {
+                var mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+                // Handle system theme change
+                var handleSystemThemeChange = function(e) {
+                    // Only react if user hasn't set a preference
+                    if (!getStoredTheme()) {
+                        updateAriaLabel(e.matches ? 'dark' : 'light');
+                    }
+                };
+
+                // Modern browsers
+                if (mediaQuery.addEventListener) {
+                    mediaQuery.addEventListener('change', handleSystemThemeChange);
+                }
+                // Safari < 14
+                else if (mediaQuery.addListener) {
+                    mediaQuery.addListener(handleSystemThemeChange);
+                }
+            }
+
+            // Grid highlight mouse tracking (only on non-touch devices)
+            if (highlight && window.matchMedia && !window.matchMedia('(pointer: coarse)').matches) {
+                document.addEventListener('mousemove', function(e) {
+                    var x = Math.floor(e.clientX / gridSize) * gridSize;
+                    var y = Math.floor(e.clientY / gridSize) * gridSize;
+                    highlight.style.left = x + 'px';
+                    highlight.style.top = y + 'px';
+                });
+            }
+        })();
+    </script>
+
+    <div class="wrapper">
+        
+        <header class="site-header">
+            <div class="site-brand">
+                <a href="https:&#x2F;&#x2F;jeffyestrumskas.com" class="site-title">Jeff Yestrumskas</a>
+                
+            </div>
+            
+        </header>
+        
+
+        <main>
+            
+
+<div class="lead">
+    <p>Welcome.  Here you can find a few fun and public things I've worked on.</p>
+
+</div>
+
+
+
+
+<section class="listing">
+    <h2 class="section-heading">Projects</h2>
+    <div class="card-grid">
+        
+        <a href="https:&#x2F;&#x2F;jeffyestrumskas.com&#x2F;projects&#x2F;defcon-27-blue-team-village-badge&#x2F;" class="card">
+            <h3 class="card-title">DEF CON 27 Blue Team Village Electronic Conference Badge</h3>
+            
+            <p class="card-desc">A fully featured WiFi honeypot emulating many common services, with challenges and more, in the form of a wearable electronic conference badge.</p>
+            
+            
+        </a>
+        
+        <a href="https:&#x2F;&#x2F;jeffyestrumskas.com&#x2F;projects&#x2F;applepi&#x2F;" class="card">
+            <h3 class="card-title">spotPlight - spotlight dataleak automation</h3>
+            
+            <p class="card-desc">Earlier versions of macOS leaked small amounts of spotlight index data to USB drives on locked systems and this automates the exfiltration process by emulating up to 128 USB mass storage devices</p>
+            
+            
+        </a>
+        
+        <a href="https:&#x2F;&#x2F;jeffyestrumskas.com&#x2F;projects&#x2F;portable-wifi-honeypot&#x2F;" class="card">
+            <h3 class="card-title">Portable WiFi honeypot</h3>
+            
+            <p class="card-desc">A dual purpose device combining travel router functionality with a honeypot</p>
+            
+            
+        </a>
+        
+        <a href="https:&#x2F;&#x2F;jeffyestrumskas.com&#x2F;projects&#x2F;xab&#x2F;" class="card">
+            <h3 class="card-title">Cross Site Scripting Anonymous Browser (XAB)</h3>
+            
+            <p class="card-desc">A fun exploration on what can be done with cross site scripting, presented at DEF CON 17.</p>
+            
+            
+        </a>
+        
+        <a href="https:&#x2F;&#x2F;jeffyestrumskas.com&#x2F;projects&#x2F;devialog&#x2F;" class="card">
+            <h3 class="card-title">devialog</h3>
+            
+            <p class="card-desc">A syslog intrusion detection system reporting on things not seen before</p>
+            
+            
+        </a>
+        
+    </div>
+</section>
+
+
+        </main>
+
+        <footer class="site-footer">
+            <span class="footer-text">&copy; 2026</span>
+        </footer>
+    </div>
+</body>
+</html>
