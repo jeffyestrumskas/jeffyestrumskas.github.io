@@ -54,7 +54,7 @@
         id="tetris-sim-toggle"
         aria-label="Simulate Tetris piece drops"
         title="Simulate piece drops"
-        style="top: 1.5rem; right: 1.5rem; bottom: auto;"
+        style="top: calc(1.5rem + 52px); right: 1.5rem; bottom: auto;"
     >
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <rect x="9"  y="5"  width="6" height="6"></rect>
@@ -69,7 +69,7 @@
         type="button"
         class="theme-toggle"
         id="theme-toggle"
-        style="top: 1.5rem; right: calc(1.5rem + 52px); bottom: auto;"
+        style="top: 1.5rem; right: 1.5rem; bottom: auto;"
         aria-label="Toggle dark mode"
         title="Toggle dark mode"
         aria-live="polite"
@@ -1309,23 +1309,23 @@ SOCIAL ENGINEERING RESISTANCE:
 </div>
 <h2 id="attacker-vs-target-breach-rate">Attacker vs Target Breach Rate</h2>
 <p>Every attacker breached gemma3:27b and minimax-m2.5 at high rates, but performance varied significantly against harder targets.  deepseek-v3.2, mistral-large-3:675b and kimi-k2.5 provided consistent attack coverage while qwen3.5:397b and o3 self-censored against more protective models.  Note that the gpt-5.4 attacker row averages over only the 3 targets it was run against (cost-limited), so its 34.0% is not comparable to the other attackers' 12-target averages.</p>
-<div style="overflow-x:auto">
-<table style="border-collapse:collapse;width:100%;table-layout:fixed;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+<table style="border-collapse:collapse;width:100%;min-width:760px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
 <thead><tr>
 <th style="padding:2px 3px;text-align:center;font-size:13px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);text-align:left"><span style="opacity:0.7">↓</span> Attacker<span style="float:right">Target <span style="opacity:0.7">→</span></span></th>
-<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0">gemma3:27b</th>
-<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0">minimax-m2.5</th>
-<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0">cogito-2.1:671b</th>
-<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0">gpt-5-mini</th>
-<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0">gpt-5.3-chat-latest</th>
-<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0">gpt-5-nano</th>
-<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0">gpt-5.1</th>
-<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0">gpt-5.2</th>
-<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0">gpt-5.4</th>
-<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0">gpt-oss:20b</th>
-<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0">glm-5</th>
-<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0">gpt-oss:120b</th>
-<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0">Avg</th>
+<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0;white-space:nowrap">gemma3:27b</th>
+<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0;white-space:nowrap">minimax-m2.5</th>
+<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0;white-space:nowrap">cogito-2.1:671b</th>
+<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0;white-space:nowrap">gpt-5-mini</th>
+<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0;white-space:nowrap">gpt-5.3-chat-latest</th>
+<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0;white-space:nowrap">gpt-5-nano</th>
+<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0;white-space:nowrap">gpt-5.1</th>
+<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0;white-space:nowrap">gpt-5.2</th>
+<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0;white-space:nowrap">gpt-5.4</th>
+<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0;white-space:nowrap">gpt-oss:20b</th>
+<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0;white-space:nowrap">glm-5</th>
+<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0;white-space:nowrap">gpt-oss:120b</th>
+<th style="padding:2px 3px;text-align:center;font-size:11px;font-weight:600;background:var(--color-text,#1a1a2e);color:var(--color-bg,#fff);border:1px solid var(--color-border,#333);min-width:0;white-space:nowrap">Avg</th>
 </tr></thead>
 <tbody>
 <tr>
