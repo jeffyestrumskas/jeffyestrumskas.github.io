@@ -6,7 +6,7 @@
     <meta name="description" content="">
     <meta name="color-scheme" content="light dark">
     <title>Jeff Yestrumskas</title>
-    <link rel="stylesheet" href="https://jeffyestrumskas.com/style.css?h=deb34d1a66af0ae0fc7b">
+    <link rel="stylesheet" href="https://jeffyestrumskas.com/style.css?h=81b5ad958a8eb241b1c9">
     
     
     <!-- Theme initialization script - runs before render to prevent flash -->
@@ -40,18 +40,36 @@
     </script>
 </head>
 <body>
-    <div class="grid-highlight" aria-hidden="true"></div>
+    <canvas id="tetris-canvas" aria-hidden="true"></canvas>
 
     <!-- Noscript: hide toggle if JS disabled (theme still works via CSS prefers-color-scheme) -->
     <noscript>
         <style>.theme-toggle { display: none !important; }</style>
     </noscript>
 
+    <!-- Tetris simulation button -->
+    <button
+        type="button"
+        class="theme-toggle"
+        id="tetris-sim-toggle"
+        aria-label="Simulate Tetris piece drops"
+        title="Simulate piece drops"
+        style="top: 1.5rem; right: 1.5rem; bottom: auto;"
+    >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <rect x="9"  y="5"  width="6" height="6"></rect>
+            <rect x="3"  y="11" width="6" height="6"></rect>
+            <rect x="9"  y="11" width="6" height="6"></rect>
+            <rect x="15" y="11" width="6" height="6"></rect>
+        </svg>
+    </button>
+
     <!-- Theme toggle button -->
     <button
         type="button"
         class="theme-toggle"
         id="theme-toggle"
+        style="top: 1.5rem; right: calc(1.5rem + 52px); bottom: auto;"
         aria-label="Toggle dark mode"
         title="Toggle dark mode"
         aria-live="polite"
@@ -80,7 +98,6 @@
 
             var STORAGE_KEY = 'theme-preference';
             var toggle = document.getElementById('theme-toggle');
-            var highlight = document.querySelector('.grid-highlight');
             var gridSize = 50;
 
             // Theme management
@@ -188,15 +205,782 @@
                 }
             }
 
-            // Grid highlight mouse tracking (only on non-touch devices)
-            if (highlight && window.matchMedia && !window.matchMedia('(pointer: coarse)').matches) {
+            // Tetris piece on background edges
+            (function() {
+                var canvas = document.getElementById('tetris-canvas');
+                if (!canvas || !canvas.getContext) return;
+                if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return;
+
+                var ctx = canvas.getContext('2d');
+                var cellSize = 10;
+                var currentPiece = null;
+                var fallingPieces = [];
+                var gameOver = false;
+                var wasOverContent = true;
+                // "Tetris mode" — pieces only appear/follow the cursor once the
+                // user clicks in a gutter to activate it. Plain mouse-over does
+                // nothing until then.
+                var tetrisActive = false;
+                var lastMX = 0, lastMY = 0;
+                var rotateAccum = 0;
+                var ROTATE_EVERY = 20;
+                var lastGutterX = 0;
+                var wrapperEl = null;
+
+                var SHAPES = [
+                    [[0,0],[1,0],[2,0],[3,0]],
+                    [[0,0],[1,0],[0,1],[1,1]],
+                    [[0,0],[1,0],[2,0],[1,1]],
+                    [[1,0],[2,0],[0,1],[1,1]],
+                    [[0,0],[1,0],[1,1],[2,1]],
+                    [[0,0],[0,1],[0,2],[1,2]],
+                    [[1,0],[1,1],[1,2],[0,2]]
+                ];
+                // Weighted pick: I-piece (index 0) shows up ~3x more often than
+                // any other piece, so the AI has enough ammo to actually score
+                // the Tetrises it's optimising for.
+                var SHAPE_WEIGHTS = [3, 1, 1, 1, 1, 1, 1];
+                var SHAPE_WEIGHT_TOTAL = 9;
+                function pickShape() {
+                    var r = Math.random() * SHAPE_WEIGHT_TOTAL;
+                    for (var i = 0; i < SHAPES.length; i++) {
+                        r -= SHAPE_WEIGHTS[i];
+                        if (r < 0) return SHAPES[i];
+                    }
+                    return SHAPES[0];
+                }
+
+                function resize() {
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                }
+                resize();
+                window.addEventListener('resize', resize);
+
+                function getColor() {
+                    return getCurrentTheme() === 'dark' ? '#e8e8e8' : '#0a0a0a';
+                }
+
+                function getWrapperRect() {
+                    if (!wrapperEl) wrapperEl = document.querySelector('.wrapper');
+                    return wrapperEl ? wrapperEl.getBoundingClientRect() : null;
+                }
+
+                function isOverBackground(x) {
+                    var r = getWrapperRect();
+                    if (!r) return true;
+                    return x < r.left || x > r.right;
+                }
+
+                // True if (x, y) is inside the stacked pieces at the bottom of the gutter
+                // (i.e. at or below the top of the stack in that column).
+                function isPositionOccupied(x, y) {
+                    ensureGrids();
+                    var grid = getGridForX(x);
+                    if (!grid) return false;
+                    var col = Math.round((x - grid.x0) / cellSize);
+                    if (col < 0 || col >= grid.cols) return false;
+                    var rows = Math.floor(canvas.height / cellSize);
+                    for (var r = 0; r < rows; r++) {
+                        if (grid.cells[gridKey(col, r)]) {
+                            return y >= r * cellSize;
+                        }
+                    }
+                    return false;
+                }
+
+                function getGutterCenterX(mx) {
+                    var r = getWrapperRect();
+                    if (!r) return mx;
+                    if (mx < r.left) return r.left / 2;
+                    return r.right + (window.innerWidth - r.right) / 2;
+                }
+
+                function rotateCells(cells, times) {
+                    times = ((times % 4) + 4) % 4;
+                    if (times === 0) return cells;
+                    var result = cells;
+                    for (var t = 0; t < times; t++) {
+                        var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                        for (var i = 0; i < result.length; i++) {
+                            if (result[i][0] < minX) minX = result[i][0];
+                            if (result[i][0] > maxX) maxX = result[i][0];
+                            if (result[i][1] < minY) minY = result[i][1];
+                            if (result[i][1] > maxY) maxY = result[i][1];
+                        }
+                        var cx = (minX + maxX) / 2;
+                        var cy = (minY + maxY) / 2;
+                        var next = [];
+                        for (var i = 0; i < result.length; i++) {
+                            next.push([Math.round(cx - (result[i][1] - cy)), Math.round(cy + (result[i][0] - cx))]);
+                        }
+                        var nMinX = Infinity, nMinY = Infinity;
+                        for (var i = 0; i < next.length; i++) {
+                            if (next[i][0] < nMinX) nMinX = next[i][0];
+                            if (next[i][1] < nMinY) nMinY = next[i][1];
+                        }
+                        for (var i = 0; i < next.length; i++) {
+                            next[i][0] -= nMinX;
+                            next[i][1] -= nMinY;
+                        }
+                        result = next;
+                    }
+                    return result;
+                }
+
+                function drawPiece(p) {
+                    var cells = rotateCells(p.cells, p.rotation);
+                    var bMaxX = 0, bMaxY = 0;
+                    for (var i = 0; i < cells.length; i++) {
+                        if (cells[i][0] > bMaxX) bMaxX = cells[i][0];
+                        if (cells[i][1] > bMaxY) bMaxY = cells[i][1];
+                    }
+                    var ox = -(bMaxX + 1) * cellSize / 2;
+                    var oy = -(bMaxY + 1) * cellSize / 2;
+                    ctx.fillStyle = getColor();
+                    ctx.globalAlpha = p.opacity !== undefined ? p.opacity : 1;
+                    for (var i = 0; i < cells.length; i++) {
+                        ctx.fillRect(p.x + ox + cells[i][0] * cellSize, p.y + oy + cells[i][1] * cellSize, cellSize - 1, cellSize - 1);
+                    }
+                    ctx.globalAlpha = 1;
+                }
+
+                // --- Grid-based landing system per gutter side ---
+                // Each gutter has its own grid. grid[side] = { cells: {}, left, cols }
+                var grids = { left: null, right: null };
+
+                function getGutterBounds() {
+                    var r = getWrapperRect();
+                    if (!r) return null;
+                    return {
+                        left:  { x0: 0, x1: r.left },
+                        right: { x0: r.right, x1: window.innerWidth }
+                    };
+                }
+
+                function ensureGrids() {
+                    var b = getGutterBounds();
+                    if (!b) return;
+                    var rows = Math.floor(canvas.height / cellSize);
+                    if (!grids.left || grids.left.x0 !== b.left.x0 || grids.left.x1 !== b.left.x1) {
+                        grids.left = { x0: b.left.x0, x1: b.left.x1, cols: Math.floor((b.left.x1 - b.left.x0) / cellSize), cells: {}, rows: rows };
+                    }
+                    if (!grids.right || grids.right.x0 !== b.right.x0 || grids.right.x1 !== b.right.x1) {
+                        grids.right = { x0: b.right.x0, x1: b.right.x1, cols: Math.floor((b.right.x1 - b.right.x0) / cellSize), cells: {}, rows: rows };
+                    }
+                }
+
+                function getGridForX(x) {
+                    var r = getWrapperRect();
+                    if (!r) return null;
+                    return x < r.left ? grids.left : grids.right;
+                }
+
+                function gridKey(col, row) { return col + ',' + row; }
+
+                // Place a piece's cells into the grid
+                function landOnGrid(p) {
+                    var grid = getGridForX(p.x);
+                    if (!grid) return;
+                    var cells = rotateCells(p.cells, p.landRotation !== undefined ? p.landRotation : p.rotation);
+                    var bMaxX = 0, bMaxY = 0;
+                    for (var i = 0; i < cells.length; i++) {
+                        if (cells[i][0] > bMaxX) bMaxX = cells[i][0];
+                        if (cells[i][1] > bMaxY) bMaxY = cells[i][1];
+                    }
+                    var ox = -(bMaxX + 1) * cellSize / 2;
+                    var oy = -(bMaxY + 1) * cellSize / 2;
+                    for (var i = 0; i < cells.length; i++) {
+                        var px = p.x + ox + cells[i][0] * cellSize;
+                        var py = p.y + oy + cells[i][1] * cellSize;
+                        var col = Math.round((px - grid.x0) / cellSize);
+                        var row = Math.round(py / cellSize);
+                        grid.cells[gridKey(col, row)] = true;
+                        if (row <= 0) gameOver = true;
+                    }
+                }
+
+                // Check for and clear complete lines in a grid
+                var clearingRows = []; // { grid, row, timer }
+
+                function checkLines(grid) {
+                    if (!grid || grid.cols <= 0) return;
+                    var rows = Math.floor(canvas.height / cellSize);
+                    for (var row = rows - 1; row >= 0; row--) {
+                        var full = true;
+                        for (var col = 0; col < grid.cols; col++) {
+                            if (!grid.cells[gridKey(col, row)]) { full = false; break; }
+                        }
+                        if (full) {
+                            clearingRows.push({ grid: grid, row: row, timer: 20 });
+                        }
+                    }
+                }
+
+                function processClearingRows() {
+                    for (var i = clearingRows.length - 1; i >= 0; i--) {
+                        clearingRows[i].timer--;
+                        if (clearingRows[i].timer <= 0) {
+                            var cr = clearingRows[i];
+                            // Remove the row
+                            for (var col = 0; col < cr.grid.cols; col++) {
+                                delete cr.grid.cells[gridKey(col, cr.row)];
+                            }
+                            // Drop everything above down by 1
+                            for (var r = cr.row - 1; r >= 0; r--) {
+                                for (var col = 0; col < cr.grid.cols; col++) {
+                                    var k = gridKey(col, r);
+                                    if (cr.grid.cells[k]) {
+                                        delete cr.grid.cells[k];
+                                        cr.grid.cells[gridKey(col, r + 1)] = true;
+                                    }
+                                }
+                            }
+                            clearingRows.splice(i, 1);
+                        }
+                    }
+                }
+
+                // Find the landing row for a piece on the grid
+                function getGridFloorY(p) {
+                    ensureGrids();
+                    var grid = getGridForX(p.x);
+                    if (!grid) return canvas.height;
+                    var rot = p.landRotation !== undefined ? p.landRotation : p.rotation;
+                    var cells = rotateCells(p.cells, rot);
+                    var bMaxX = 0, bMaxY = 0;
+                    for (var i = 0; i < cells.length; i++) {
+                        if (cells[i][0] > bMaxX) bMaxX = cells[i][0];
+                        if (cells[i][1] > bMaxY) bMaxY = cells[i][1];
+                    }
+                    var ox = -(bMaxX + 1) * cellSize / 2;
+                    var rows = Math.floor(canvas.height / cellSize);
+
+                    // For each column the piece occupies, find the highest occupied cell
+                    var maxDrop = rows;
+                    for (var i = 0; i < cells.length; i++) {
+                        var px = p.x + ox + cells[i][0] * cellSize;
+                        var col = Math.round((px - grid.x0) / cellSize);
+                        var cellRow = cells[i][1];
+                        // Scan down from top to find first occupied or floor
+                        var landRow = rows - 1;
+                        for (var r = 0; r < rows; r++) {
+                            if (grid.cells[gridKey(col, r)]) {
+                                landRow = r - 1;
+                                break;
+                            }
+                        }
+                        var drop = landRow - cellRow;
+                        if (drop < maxDrop) maxDrop = drop;
+                    }
+                    // Convert grid row to pixel Y
+                    var oy = -(bMaxY + 1) * cellSize / 2;
+                    return maxDrop * cellSize - oy;
+                }
+
+                // Draw the grid cells (landed pieces)
+                function drawGrid(grid) {
+                    if (!grid) return;
+                    var color = getColor();
+                    ctx.fillStyle = color;
+                    var rows = Math.floor(canvas.height / cellSize);
+                    for (var row = 0; row < rows; row++) {
+                        // Check if this row is being cleared (flash effect)
+                        var clearing = false;
+                        for (var ci = 0; ci < clearingRows.length; ci++) {
+                            if (clearingRows[ci].grid === grid && clearingRows[ci].row === row) {
+                                clearing = true; break;
+                            }
+                        }
+                        for (var col = 0; col < grid.cols; col++) {
+                            if (grid.cells[gridKey(col, row)]) {
+                                if (clearing) {
+                                    ctx.globalAlpha = (Math.random() > 0.5) ? 0.3 : 0.8; // flash
+                                } else {
+                                    ctx.globalAlpha = 1;
+                                }
+                                ctx.fillRect(grid.x0 + col * cellSize, row * cellSize, cellSize - 1, cellSize - 1);
+                            }
+                        }
+                    }
+                    ctx.globalAlpha = 1;
+                }
+
+                function spawnPiece(mx, my) {
+                    lastGutterX = getGutterCenterX(mx);
+                    currentPiece = {
+                        cells: pickShape(),
+                        rotation: 0,
+                        x: mx,
+                        y: my
+                    };
+                    rotateAccum = 0;
+                    lastMX = mx;
+                    lastMY = my;
+                }
+
+                // Build a snapshot of the grid including in-flight pieces' destinations
+                function getVirtualGrid(grid, side) {
+                    var vg = {};
+                    var k;
+                    // Copy landed cells
+                    for (k in grid.cells) { vg[k] = true; }
+                    // Simulate where each falling piece will land
+                    var rows = Math.floor(canvas.height / cellSize);
+                    for (var fi = 0; fi < fallingPieces.length; fi++) {
+                        var fp = fallingPieces[fi];
+                        var fpGrid = getGridForX(fp.targetX !== null && fp.targetX !== undefined ? fp.targetX : fp.x);
+                        if (fpGrid !== grid) continue;
+                        var fpX = fp.targetX !== null && fp.targetX !== undefined ? fp.targetX : fp.x;
+                        var fpRot = fp.landRotation !== undefined ? fp.landRotation : fp.rotation;
+                        var fpCells = rotateCells(fp.cells, fpRot);
+                        var fbMaxX = 0, fbMaxY = 0;
+                        for (var i = 0; i < fpCells.length; i++) {
+                            if (fpCells[i][0] > fbMaxX) fbMaxX = fpCells[i][0];
+                            if (fpCells[i][1] > fbMaxY) fbMaxY = fpCells[i][1];
+                        }
+                        var fox = -(fbMaxX + 1) * cellSize / 2;
+                        // Find where it will land
+                        var maxDrop = rows;
+                        for (var i = 0; i < fpCells.length; i++) {
+                            var px = fpX + fox + fpCells[i][0] * cellSize;
+                            var col = Math.round((px - grid.x0) / cellSize);
+                            var cellRow = fpCells[i][1];
+                            var landRow = rows - 1;
+                            for (var r = 0; r < rows; r++) {
+                                if (vg[gridKey(col, r)]) { landRow = r - 1; break; }
+                            }
+                            var drop = landRow - cellRow;
+                            if (drop < maxDrop) maxDrop = drop;
+                        }
+                        // Place it in virtual grid
+                        for (var i = 0; i < fpCells.length; i++) {
+                            var px = fpX + fox + fpCells[i][0] * cellSize;
+                            var col = Math.round((px - grid.x0) / cellSize);
+                            var row = maxDrop + fpCells[i][1];
+                            if (row >= 0 && row < rows) vg[gridKey(col, row)] = true;
+                        }
+                    }
+                    return vg;
+                }
+
+                // Fixed well columns per gutter — set once, never changes
+                var wellColumns = { left: null, right: null };
+
+                function getDesignatedWell(grid, side) {
+                    if (side === 'left') {
+                        if (wellColumns.left === null) wellColumns.left = Math.floor(grid.cols / 2);
+                        return wellColumns.left;
+                    } else {
+                        if (wellColumns.right === null) wellColumns.right = Math.floor(grid.cols / 2);
+                        return wellColumns.right;
+                    }
+                }
+
+                // Tetris AI: find the best (x, rotation) using standard heuristics
+                function bestPlacement(p, side) {
+                    ensureGrids();
+                    var grid = (side === 'left') ? grids.left : grids.right;
+                    if (!grid || grid.cols <= 0) return { x: getGutterCenterX(p.x), rot: 0 };
+                    var rows = Math.floor(canvas.height / cellSize);
+                    var vg = getVirtualGrid(grid, side);
+
+                    var bestScore = -Infinity;
+                    var bestCol = 0;
+                    var bestRot = 0;
+
+                    for (var rot = 0; rot < 4; rot++) {
+                        var cells = rotateCells(p.cells, rot);
+                        var bMaxX = 0, bMaxY = 0;
+                        for (var i = 0; i < cells.length; i++) {
+                            if (cells[i][0] > bMaxX) bMaxX = cells[i][0];
+                            if (cells[i][1] > bMaxY) bMaxY = cells[i][1];
+                        }
+                        var pieceW = bMaxX + 1;
+
+                        for (var startCol = 0; startCol <= grid.cols - pieceW; startCol++) {
+                            var fits = true;
+                            var maxDrop = rows;
+                            for (var i = 0; i < cells.length; i++) {
+                                var col = startCol + cells[i][0];
+                                if (col < 0 || col >= grid.cols) { fits = false; break; }
+                                var landRow = rows - 1;
+                                for (var r = 0; r < rows; r++) {
+                                    if (vg[gridKey(col, r)]) { landRow = r - 1; break; }
+                                }
+                                var drop = landRow - cells[i][1];
+                                if (drop < maxDrop) maxDrop = drop;
+                            }
+                            if (!fits || maxDrop < 0) continue;
+
+                            // Simulate placement
+                            var tempGrid = {};
+                            for (var k in vg) { tempGrid[k] = true; }
+                            for (var i = 0; i < cells.length; i++) {
+                                tempGrid[gridKey(startCol + cells[i][0], maxDrop + cells[i][1])] = true;
+                            }
+
+                            // --- El-Tetris heuristic: just play well ---
+                            // Build the post-placement board, clearing any full rows, so the
+                            // features below reflect what the board ACTUALLY looks like after
+                            // this move (cleared lines gone, everything above shifted down).
+                            var board = [];
+                            for (var r = 0; r < rows; r++) {
+                                var rowFull = true;
+                                for (var c = 0; c < grid.cols; c++) {
+                                    if (!tempGrid[gridKey(c, r)]) { rowFull = false; break; }
+                                }
+                                if (rowFull) continue; // cleared
+                                var rowArr = [];
+                                for (var c = 0; c < grid.cols; c++) rowArr.push(!!tempGrid[gridKey(c, r)]);
+                                board.push(rowArr);
+                            }
+                            var linesCleared = rows - board.length;
+                            var emptyRow = [];
+                            for (var c = 0; c < grid.cols; c++) emptyRow.push(false);
+                            while (board.length < rows) board.unshift(emptyRow);
+
+                            // Landing height: vertical centre of the piece, measured from the floor.
+                            var pieceMinY = cells[0][1], pieceMaxY = cells[0][1];
+                            for (var i = 1; i < cells.length; i++) {
+                                if (cells[i][1] < pieceMinY) pieceMinY = cells[i][1];
+                                if (cells[i][1] > pieceMaxY) pieceMaxY = cells[i][1];
+                            }
+                            var landingHeight = rows - (maxDrop + (pieceMinY + pieceMaxY) / 2);
+
+                            // Holes: an empty cell with at least one filled cell above it.
+                            var holes = 0;
+                            for (var c = 0; c < grid.cols; c++) {
+                                var seenFilled = false;
+                                for (var r = 0; r < rows; r++) {
+                                    if (board[r][c]) seenFilled = true;
+                                    else if (seenFilled) holes++;
+                                }
+                            }
+
+                            // Row transitions: filled<->empty changes along each row (walls count
+                            // as filled). Skip fully-empty rows so the open space above the stack
+                            // doesn't add a constant cost that would discourage clearing lines.
+                            var rowTrans = 0;
+                            for (var r = 0; r < rows; r++) {
+                                var anyFilled = false;
+                                for (var c = 0; c < grid.cols; c++) { if (board[r][c]) { anyFilled = true; break; } }
+                                if (!anyFilled) continue;
+                                var prev = true; // left wall
+                                for (var c = 0; c < grid.cols; c++) {
+                                    var cur = board[r][c];
+                                    if (cur !== prev) rowTrans++;
+                                    prev = cur;
+                                }
+                                if (!prev) rowTrans++; // right wall
+                            }
+
+                            // Column transitions: filled<->empty changes down each column
+                            // (floor counts as filled, the open top counts as empty).
+                            var colTrans = 0;
+                            for (var c = 0; c < grid.cols; c++) {
+                                var prevc = false; // top is empty
+                                for (var r = 0; r < rows; r++) {
+                                    var curc = board[r][c];
+                                    if (curc !== prevc) colTrans++;
+                                    prevc = curc;
+                                }
+                                if (!prevc) colTrans++; // floor is filled
+                            }
+
+                            // Well sums: cumulative depth of narrow wells (empty cell with both
+                            // horizontal neighbours filled). Deep wells cost more (1+2+...+depth).
+                            var wellSums = 0;
+                            for (var c = 0; c < grid.cols; c++) {
+                                for (var r = 0; r < rows; r++) {
+                                    if (!board[r][c] &&
+                                        (c === 0 || board[r][c - 1]) &&
+                                        (c === grid.cols - 1 || board[r][c + 1])) {
+                                        wellSums++;
+                                        for (var rr = r + 1; rr < rows; rr++) {
+                                            if (!board[rr][c]) wellSums++; else break;
+                                        }
+                                    }
+                                }
+                            }
+
+                            // El-Tetris weights (Islam Faisal). Tuned to clear lines whenever
+                            // possible while keeping the stack low and hole-free.
+                            var score =
+                                -4.500158825082766 * landingHeight +
+                                 3.4181268101392694 * linesCleared +
+                                -3.2178882868487753 * rowTrans +
+                                -9.348695305445199  * colTrans +
+                                -7.899265427351652  * holes +
+                                -3.3855972247263626 * wellSums;
+
+                            if (score > bestScore) {
+                                bestScore = score;
+                                bestCol = startCol;
+                                bestRot = rot;
+                            }
+                        }
+                    }
+
+                    // Calculate the pixel X for this placement
+                    var bc = rotateCells(p.cells, bestRot);
+                    var bmx = 0;
+                    for (var i = 0; i < bc.length; i++) { if (bc[i][0] > bmx) bmx = bc[i][0]; }
+                    var bestX = grid.x0 + bestCol * cellSize + (bmx + 1) * cellSize / 2;
+
+                    return { x: bestX, rot: bestRot };
+                }
+
+                function dropPiece() {
+                    if (!currentPiece) return;
+                    var dropped = currentPiece;
+                    // Give it a small upward velocity so it pops up 5-10px like it was tossed.
+                    dropped.vy = -(0.9 + Math.random() * 0.2);
+                    dropped.opacity = 1;
+                    dropped.rotationSpeed = 0.05 + Math.random() * 0.05;
+                    dropped.visualAngle = 0;
+
+                    // Always find the absolute best spot in the gutter
+                    var r = getWrapperRect();
+                    var side = (r && dropped.x < r.left) ? 'left' : 'right';
+                    var bp = bestPlacement(dropped, side);
+                    dropped.landRotation = bp.rot;
+                    dropped.targetX = bp.x;
+
+                    fallingPieces.push(dropped);
+                    currentPiece = null;
+                }
+
+                // Always-running render loop
+                function frame() {
+                    ensureGrids();
+                    if (gameOver) {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        drawGrid(grids.left);
+                        drawGrid(grids.right);
+                        requestAnimationFrame(frame);
+                        return;
+                    }
+                    processClearingRows();
+
+                    // Update falling pieces
+                    for (var i = fallingPieces.length - 1; i >= 0; i--) {
+                        var p = fallingPieces[i];
+                        var stillSliding = p.targetX !== null && p.targetX !== undefined;
+
+                        // Slide to target X first
+                        if (stillSliding) {
+                            var diff = p.targetX - p.x;
+                            if (Math.abs(diff) < 1) {
+                                p.x = p.targetX;
+                                p.targetX = null;
+                                stillSliding = false;
+                            } else {
+                                p.x += diff * 0.15;
+                            }
+                        }
+
+                        // Slow gravity while sliding, normal after
+                        if (stillSliding) {
+                            p.vy += 0.02;
+                        } else {
+                            p.vy += 0.06;
+                        }
+                        p.y += p.vy;
+
+                        // Spin while falling
+                        if (p.landRotation !== undefined) {
+                            p.visualAngle = (p.visualAngle || 0) + p.rotationSpeed;
+                            p.rotation = Math.floor(p.visualAngle / (Math.PI / 2)) % 4;
+                        }
+
+                        // Only check landing once done sliding
+                        if (!stillSliding) {
+                            // Snap to final rotation
+                            if (p.landRotation !== undefined) {
+                                p.rotation = p.landRotation;
+                            }
+                            var floorY = getGridFloorY(p);
+                            if (p.y >= floorY) {
+                                p.y = floorY;
+                                p.vy = 0;
+                                landOnGrid(p);
+                                var grid = getGridForX(p.x);
+                                checkLines(grid);
+                                fallingPieces.splice(i, 1);
+                            }
+                        }
+                    }
+
+                    // Draw everything
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    drawGrid(grids.left);
+                    drawGrid(grids.right);
+                    for (var i = 0; i < fallingPieces.length; i++) {
+                        drawPiece(fallingPieces[i]);
+                    }
+                    if (currentPiece) {
+                        drawPiece(currentPiece);
+                    }
+
+                    requestAnimationFrame(frame);
+                }
+                requestAnimationFrame(frame);
+
                 document.addEventListener('mousemove', function(e) {
-                    var x = Math.floor(e.clientX / gridSize) * gridSize;
-                    var y = Math.floor(e.clientY / gridSize) * gridSize;
-                    highlight.style.left = x + 'px';
-                    highlight.style.top = y + 'px';
+                    if (gameOver) return;
+                    // Only react to the cursor once tetris mode has been activated
+                    // by a click — otherwise mousing into the gutters does nothing.
+                    if (!tetrisActive) return;
+                    var mx = e.clientX;
+                    var my = e.clientY;
+
+                    if (!isOverBackground(mx)) {
+                        // Mouse left gutter — drop to best spot in gutter
+                        if (currentPiece) {
+                            currentPiece.y = my;
+                            dropPiece();
+                        }
+                        wasOverContent = true;
+                        rotateAccum = 0;
+                        return;
+                    }
+
+                    // Mouse is over background
+                    if (wasOverContent) {
+                        // Don't spawn if the cursor is inside the stack at the bottom —
+                        // wait until it's over a blank part of the gutter.
+                        if (isPositionOccupied(mx, my)) {
+                            return;
+                        }
+                        spawnPiece(mx, my);
+                        wasOverContent = false;
+                        return;
+                    }
+
+                    // Still in gutter — follow the mouse directly
+                    if (currentPiece) {
+                        lastGutterX = getGutterCenterX(mx);
+                        currentPiece.x = mx;
+                        currentPiece.y = my;
+
+                        var dx = mx - lastMX;
+                        var dy = my - lastMY;
+                        rotateAccum += Math.sqrt(dx * dx + dy * dy);
+                        lastMX = mx;
+                        lastMY = my;
+
+                        if (rotateAccum >= ROTATE_EVERY) {
+                            currentPiece.rotation += 1;
+                            rotateAccum = 0;
+                        }
+                    }
                 });
-            }
+
+                // Simulate a dropped piece from a random spot in a random gutter
+                function simulateDrop() {
+                    if (gameOver) {
+                        simEnabled = false;
+                        stopSimTimer();
+                        if (simBtn) simBtn.style.opacity = '';
+                        return;
+                    }
+                    ensureGrids();
+                    var b = getGutterBounds();
+                    if (!b) return;
+                    var side = Math.random() < 0.5 ? 'left' : 'right';
+                    var gb = b[side];
+                    // Fall back to the other side if this one is too narrow
+                    if (gb.x1 - gb.x0 < cellSize * 4) {
+                        side = side === 'left' ? 'right' : 'left';
+                        gb = b[side];
+                        if (gb.x1 - gb.x0 < cellSize * 4) return;
+                    }
+                    var mx = gb.x0 + cellSize * 2 + Math.random() * (gb.x1 - gb.x0 - cellSize * 4);
+                    var piece = {
+                        cells: pickShape(),
+                        rotation: 0,
+                        x: mx,
+                        y: -cellSize * 4,
+                        vy: -(0.9 + Math.random() * 0.2),
+                        opacity: 1,
+                        rotationSpeed: 0.05 + Math.random() * 0.05,
+                        visualAngle: 0
+                    };
+                    var bp = bestPlacement(piece, side);
+                    piece.landRotation = bp.rot;
+                    piece.targetX = bp.x;
+                    fallingPieces.push(piece);
+                }
+
+                // Toggle button: run simulateDrop() at ~5/sec while active
+                var simTimer = null;
+                var simEnabled = false;
+                var simBtn = document.getElementById('tetris-sim-toggle');
+                function startSimTimer() {
+                    if (simTimer || !simEnabled || gameOver) return;
+                    if (document.hidden) return;
+                    simTimer = setInterval(simulateDrop, 200);
+                }
+                function stopSimTimer() {
+                    if (simTimer) { clearInterval(simTimer); simTimer = null; }
+                }
+                if (simBtn) {
+                    simBtn.addEventListener('click', function() {
+                        if (simEnabled) {
+                            simEnabled = false;
+                            stopSimTimer();
+                            simBtn.style.opacity = '';
+                        } else {
+                            simEnabled = true;
+                            startSimTimer();
+                            simBtn.style.opacity = '1';
+                        }
+                    });
+                }
+
+                // Pause the simulation while the tab is hidden so pieces don't
+                // queue up (setInterval keeps firing in background tabs while
+                // requestAnimationFrame is paused, which caused a flurry of
+                // drops on tab re-focus).
+                document.addEventListener('visibilitychange', function() {
+                    if (document.hidden) {
+                        stopSimTimer();
+                    } else if (simEnabled && !gameOver) {
+                        startSimTimer();
+                    }
+                });
+
+                // Click in a gutter to activate tetris mode (and on later clicks,
+                // drop the current piece from exactly where it is).
+                document.addEventListener('mousedown', function(e) {
+                    if (gameOver) return;
+                    if (!isOverBackground(e.clientX)) return;
+
+                    if (!tetrisActive) {
+                        // First click — enter tetris mode and show a piece.
+                        tetrisActive = true;
+                        if (!isPositionOccupied(e.clientX, e.clientY)) {
+                            spawnPiece(e.clientX, e.clientY);
+                            wasOverContent = false;
+                        } else {
+                            wasOverContent = true;
+                        }
+                        return;
+                    }
+
+                    if (currentPiece) {
+                        dropPiece();
+                        // Only spawn a replacement if the click is on a blank part
+                        // of the gutter, not inside the stacked pieces at the bottom.
+                        if (!isPositionOccupied(e.clientX, e.clientY)) {
+                            spawnPiece(e.clientX, e.clientY);
+                        } else {
+                            wasOverContent = true;
+                        }
+                    }
+                });
+            })();
         })();
     </script>
 
@@ -225,6 +1009,14 @@
 <section class="listing">
     <h2 class="section-heading">Projects</h2>
     <div class="card-grid">
+        
+        <a href="https:&#x2F;&#x2F;jeffyestrumskas.com&#x2F;projects&#x2F;multi-turn-red-team-research&#x2F;" class="card">
+            <h3 class="card-title">Multi-Turn LLM vs LLM Red-Team Research</h3>
+            
+            <p class="card-desc">Automated LLM vs LLM red teaming of select models through a RAG chatbot to establish model baselines and selection criteria</p>
+            
+            
+        </a>
         
         <a href="https:&#x2F;&#x2F;jeffyestrumskas.com&#x2F;projects&#x2F;defcon-27-blue-team-village-badge&#x2F;" class="card">
             <h3 class="card-title">DEF CON 27 Blue Team Village Electronic Conference Badge</h3>
