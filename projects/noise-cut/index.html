@@ -1081,11 +1081,11 @@
 <p>In this design, Elastic Cloud and the local Ollama model (<strong>Sanitize</strong>) are considered trusted.  Trusting Elastic Cloud with the telemetry is a risk tradeoff.  The alternative is running a highly available logging service on site.  The remote inference provider is considered untrusted.  The assumption is that any data sent may be logged, retained or used for training.  The assets at risk are internal identifiers (host, user and domain names, IPs, secrets) and detection coverage, since overly broad filters applied on Elastic Cloud can hide actual attacks.</p>
 <h3 id="addressed">Addressed</h3>
 <table><thead><tr><th>threat</th><th>mitigation</th></tr></thead><tbody>
-<tr><td>internal infra data sent to untrusted inference provider</td><td>• models only receive event counts and field values such as command lines, never raw events or keys<br>• host, user and domain names, IPs and secrets are replaced with stand-ins before a log line goes to the inference provider<br>• local LLM-based sanitizer (<strong>Sanitize</strong>)<br>• transcripts of tool results and model replies, and a report of what <strong>Sanitize</strong> caught, to audit effectiveness</td></tr>
-<tr><td>prompt injection in log text</td><td>• log text is marked as data (not a hard control)<br>• models return only typed JSON<br>• code refuses filters on command lines that name a network destination (a URL, IP or host)<br>• models only have access to deterministic read-only tools (<code>breakdown</code>, <code>count</code>, <code>explain</code>), no API keys.  Injected instructions are unable to write, delete or exfiltrate</td></tr>
+<tr><td>internal infra data sent to untrusted inference provider</td><td>• models receives event counts and field values such as command lines, no raw events or keys<br>• host, user and domain names, IPs and secrets are replaced with stand-ins before a log line goes to the inference provider<br>• local LLM-based sanitizer (<strong>Sanitize</strong>)<br>• transcripts of tool results and model replies, and a report of what <strong>Sanitize</strong> caught, to audit effectiveness</td></tr>
+<tr><td>prompt injection in log text</td><td>• log text is marked as data (not a hard control)<br>• models return typed JSON<br>• code refuses filters on command lines that name a network destination (a URL, IP or host)<br>• models only have access to deterministic read-only tools, no API keys.  Injected instructions are unable to write, delete or exfiltrate</td></tr>
 <tr><td>inference provider training on prompts and data</td><td>• only send stand-ins, no real host, user or domain names, IPs or secrets</td></tr>
-<tr><td>a filter that hides an attacker</td><td>• code refuses shells and user-writable, container and persistence paths<br>• tier 1 living off the land binaries (curl, wget, nc, ssh, …) are not filtered, even by exact command line<br>• tier 2 living off the land binaries (the LOLBAS, GTFOBins and LOOBins catalogue) are only allowed by exact command line<br>• in testing, every validator model approved at least one unsafe filter; the code, not the second model, is the hard control</td></tr>
-<tr><td>anomalous spikes that look like noise</td><td>• refuse to filter log bursts: over half of a filter's events in a single hour, or all of them within 3 hours (real noise is more likely to be steady over time)</td></tr>
+<tr><td>a filter that hides an attacker</td><td>• code refuses shells and user-writable, container and persistence paths<br>• tier 1 living off the land binaries (curl, wget, nc, ssh, …) are not filtered, even by exact command line<br>• tier 2 living off the land binaries (the LOLBAS, GTFOBins and LOOBins catalogue) are allowed by the exact command line<br>• in testing, every validator model approved at least one unsafe filter; the code, not the second model, is the hard control</td></tr>
+<tr><td>anomalous spikes that look like noise</td><td>• refuse to filter log bursts; real noise is more likely to be steady over time</td></tr>
 <tr><td>a model creating or deleting filters</td><td>• agent only has a read-only Elastic key, no write access<br>• filters are only created by the <strong>Apply</strong> step, which is deterministic code (no model) and the only step with an event filter key</td></tr>
 <tr><td>key misuse</td><td>• each component has access to only the key it needs (least privilege)<br>• accidental unrestricted keys are refused</td></tr>
 <tr><td>exfiltration from a step</td><td>• runs in sandbox with egress filters</td></tr>
@@ -1097,10 +1097,10 @@
 <tr><td>an internal name <strong>Pseudo</strong>'s patterns and <strong>Sanitize</strong> miss</td><td>sent to the inference provider as is</td></tr>
 <tr><td>what stand-ins leave in</td><td>program paths, command lines, script names and event counts still reach the inference provider, and may end up in training data; a tradeoff for the judgment provided by an LLM</td></tr>
 <tr><td>a filter that passes every check and still hides an attack</td><td>run dry runs until results are consistent</td></tr>
-<tr><td>a compromised Elastic Cloud deployment</td><td>Elastic Cloud is the only trusted third party; it holds the raw events and the filters</td></tr>
+<tr><td>a compromised Elastic Cloud deployment</td><td>Elastic Cloud is the only trusted third party; stores raw events and the filters</td></tr>
 <tr><td>compromise of the host running the pipeline</td><td>all API keys are held here</td></tr>
 <tr><td>write access to a filtered program's path</td><td>a filter trusts the program at that path</td></tr>
-<tr><td>supply chain</td><td>images are pinned by digest but not scanned (no SCA); Python is standard library only</td></tr>
+<tr><td>supply chain</td><td>images are pinned by digest but not scanned (no SCA); Python is standard library</td></tr>
 </tbody></table>
 <h2 id="dataflow">Dataflow</h2>
 <p><em>One run, top to bottom, numbered in order.</em></p>
@@ -1335,7 +1335,6 @@ p:has(+ .en-expand) { margin: 0 0 .3em; }
   box.querySelector('.en-zoom-out').addEventListener('click', function () { zoom = Math.max(zoom / 1.25, 0.5); apply(); });
 })();
 </script>
-<p><em>Striped boxes are untrusted.  Model output is untrusted until <strong>Apply</strong> re-checks it.  Squid logo from <a rel="external" href="https://www.squid-cache.org/Artwork/">squid-cache.org</a>, CC BY-NC-SA 3.0.</em></p>
 <p><strong>Rows</strong> finds the noisiest Elastic events.  <strong>Propose</strong> has one model suggest filters for each row, and <strong>Validate</strong> has a second model approve or reject them.  Before any line goes to the inference provider, <strong>Sanitize</strong> has a local model name identifying values, and <strong>Pseudo</strong> swaps those and every known name for stand-ins.  <strong>Apply</strong> reruns the code checks and creates what passed, as a dry run by default.  Each step runs in its own Docker container, and all egress goes through the squid proxy.</p>
 <h2 id="prompt-injection-defenses">Prompt Injection Defenses</h2>
 <p>Prompt injection is mitigated with deterministic code checks for <strong>Propose</strong> and <strong>Validate</strong>, and with canaries for <strong>Sanitize</strong>.  Each step can reach predefined hosts only.  Models only have access to deterministic read-only tools.</p>
