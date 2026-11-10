@@ -6,7 +6,7 @@
     <meta name="description" content="">
     <meta name="color-scheme" content="light dark">
     <title>Projects | Jeff Yestrumskas</title>
-    <link rel="stylesheet" href="https://jeffyestrumskas.com/style.css?h=49422e396f56a7679404">
+    <link rel="stylesheet" href="https://jeffyestrumskas.com/style.css?h=38311a29dbd9ea346837">
     
     
     <!-- Theme initialization script - runs before render to prevent flash -->
@@ -349,12 +349,24 @@
                 // Each gutter has its own grid. grid[side] = { cells: {}, left, cols }
                 var grids = { left: null, right: null };
 
+                // Cap each well's width: on very wide windows the gutters hold
+                // hundreds of columns and the AI's placement search crawls.
+                var MAX_COLS = 36;
+
+                // Narrow [x0, x1] to at most MAX_COLS cells, centered in the gutter
+                function capWell(x0, x1) {
+                    var maxW = MAX_COLS * cellSize;
+                    if (x1 - x0 <= maxW) return { x0: x0, x1: x1 };
+                    var start = Math.round((x0 + x1 - maxW) / 2);
+                    return { x0: start, x1: start + maxW };
+                }
+
                 function getGutterBounds() {
                     var r = getWrapperRect();
                     if (!r) return null;
                     return {
-                        left:  { x0: 0, x1: r.left },
-                        right: { x0: r.right, x1: window.innerWidth }
+                        left:  capWell(0, r.left),
+                        right: capWell(r.right, window.innerWidth)
                     };
                 }
 
@@ -1010,6 +1022,14 @@
 
 
 <div class="card-grid">
+    
+    <a href="https:&#x2F;&#x2F;jeffyestrumskas.com&#x2F;projects&#x2F;noise-cut&#x2F;" class="card">
+        <h3 class="card-title">Noise Cut</h3>
+        
+        <p class="card-desc">Noise Cut sets out to reduce SIEM ingest costs using untrusted cloud models without leaking data or hiding attacks</p>
+        
+        
+    </a>
     
     <a href="https:&#x2F;&#x2F;jeffyestrumskas.com&#x2F;projects&#x2F;multi-turn-red-team-research&#x2F;" class="card">
         <h3 class="card-title">Multi-Turn LLM vs LLM Red-Team Research</h3>
